@@ -77,7 +77,7 @@ macro_rules! bwrap_flag {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum FsOptions {
-    /// the equivalent of `--bind` (with the read_only or try modifier if set)
+    /// the equivalent of `--bind` (with the `read_only` or try modifier if set)
     /// This means that the file/directory will be visible from inside the sandbox at the given
     /// path (destination). it will be backed up by the directory/file at `source` on the host
     /// (outside the sandbox)
@@ -211,7 +211,7 @@ pub enum FsOptions {
 }
 
 impl FsOptions {
-    pub fn to_option(&self) -> impl IntoIterator<Item = CowStr> {
+    #[must_use] pub fn to_option(&self) -> impl IntoIterator<Item = CowStr> {
         match self {
             Self::Chmod {
                 destination,
