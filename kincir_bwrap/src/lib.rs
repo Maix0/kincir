@@ -10,28 +10,27 @@ use std::collections::{HashMap, HashSet};
 
 pub use fs_options::FsOptions;
 pub use namespace::NamespaceFlags;
+pub use namespace::NamespaceOptions;
 
 type CowStr = std::borrow::Cow<'static, str>;
 
 pub struct BWrapBuilder {
     clear_env: bool,
-    cwd: Option<CowStr>,
     env: HashMap<CowStr, CowStr>,
     fs_options: Vec<fs_options::FsOptions>,
-    new_session: bool,
     unset_env: HashSet<CowStr>,
+    ns_options: NamespaceOptions,
 }
 
 impl BWrapBuilder {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            new_session: false,
             clear_env: false,
             env: HashMap::new(),
             unset_env: HashSet::new(),
             fs_options: Vec::new(),
-            cwd: None,
+            ns_options: NamespaceOptions::new(),
         }
     }
 
@@ -73,18 +72,38 @@ impl BWrapBuilder {
     }
     #[must_use]
     pub fn set_cwd(mut self, cwd: impl Into<CowStr>) -> Self {
-        self.cwd = Some(cwd.into());
+        self.ns_options.set_cwd(cwd);
         self
     }
     #[must_use]
     pub fn unset_cwd(mut self) -> Self {
-        self.cwd = None;
+        self.ns_options.unset_cwd();
         self
     }
 
     #[must_use]
     pub fn new_session(mut self, enable: bool) -> Self {
-        self.new_session = enable;
+        self.ns_options
+            .flags
+            .set(NamespaceFlags::NEW_SESSION, enable);
+        self
+    }
+
+    /// this takes the `flags` and add them to the existing flagss
+    pub fn add_namespace_flags(mut self, flags: NamespaceFlags) -> Self {
+        self.ns_options.flags.insert(flags);
+        self
+    }
+
+    /// this takes the `flags` and directly set the value to that
+    pub fn set_namespace_flags(mut self, flags: NamespaceFlags) -> Self {
+        self.ns_options.flags = flags;
+        self
+    }
+
+    /// this takes the `flags` and remove them from the existing flagss
+    pub fn remove_namespace_flags(mut self, flags: NamespaceFlags) -> Self {
+        self.ns_options.flags.remove(flags);
         self
     }
 }
@@ -98,9 +117,6 @@ impl Default for BWrapBuilder {
 impl BWrapBuilder {
     pub fn build_args(&mut self) -> Vec<std::borrow::Cow<'static, str>> {
         let mut v: Vec<CowStr> = Vec::new();
-        if self.new_session {
-            v.push("--new-session".into());
-        }
         if self.clear_env {
             v.push("--clearenv".into());
         }
@@ -113,13 +129,10 @@ impl BWrapBuilder {
             v.push("--unsetenv".into());
             v.push(key.clone());
         }
-        if let Some(cwd) = self.cwd.as_ref() {
-            v.push("--chdir".into());
-            v.push(cwd.clone());
-        }
         for opts in &self.fs_options {
             v.extend(opts.to_option());
         }
+        v.extend(self.ns_options.clone().to_options());
 
         v
     }
