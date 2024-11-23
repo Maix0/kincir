@@ -1,12 +1,16 @@
 #![warn(clippy::pedantic)]
+#![forbid(unsafe_code)]
 
 //! This is a crate that aims to wrap bubblewrap cli tool to be used in rust without forcing the
 //! use of raw CLI api
 
 mod fs_options;
+mod namespace;
 use std::collections::{HashMap, HashSet};
 
 pub use fs_options::FsOptions;
+pub use namespace::NamespaceFlags;
+
 type CowStr = std::borrow::Cow<'static, str>;
 
 pub struct BWrapBuilder {
@@ -116,7 +120,6 @@ impl BWrapBuilder {
         for opts in &self.fs_options {
             v.extend(opts.to_option());
         }
-
 
         v
     }

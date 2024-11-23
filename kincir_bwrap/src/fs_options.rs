@@ -1,17 +1,5 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   fs_options.rs                                      :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: maiboyer <maiboyer@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2024/11/22 22:10:33 by maiboyer          #+#    #+#             */
-/*   Updated: 2024/11/22 22:36:05 by maiboyer         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 use crate::CowStr;
-use std::os::fd::AsRawFd;
+// use std::os::fd::AsRawFd;
 
 macro_rules! vec_size {
     ($default_size:literal) => {
@@ -177,6 +165,7 @@ pub enum FsOptions {
         /// Where does the bind lives while inside of the sandbox
         destination: CowStr,
     },
+    /*
     File {
         /// The filedescriptor that will be used in the `--file` flag. Please check the manpage of
         /// `bwrap(1)` to see more information about it
@@ -199,7 +188,7 @@ pub enum FsOptions {
         /// permission would allow it
         read_only: bool,
     },
-
+    */
     /// Change the permission of an existing file inside the sandbox
     Chmod {
         /// Which file/directory/path to change the permission
@@ -211,7 +200,9 @@ pub enum FsOptions {
 }
 
 impl FsOptions {
-    #[must_use] pub fn to_option(&self) -> impl IntoIterator<Item = CowStr> {
+    #[expect(clippy::too_many_lines)]
+    #[must_use]
+    pub fn to_option(&self) -> impl IntoIterator<Item = CowStr> {
         match self {
             Self::Chmod {
                 destination,
@@ -221,31 +212,33 @@ impl FsOptions {
                 CowStr::from(format!("{permission:o}")),
                 destination.clone(),
             ],
-            Self::Data {
-                source,
-                destination,
-                permission,
-                read_only,
-            } => {
-                let mut v = Vec::with_capacity(vec_size!(@perm: 3, permission));
-                vec_append!(@perm: &mut v, permission);
-                v.push(bwrap_flag!(@ro: "data-bind", *read_only));
-                v.push(source.as_raw_fd().to_string().into());
-                v.push(destination.clone());
-                v
-            }
-            Self::File {
-                source,
-                destination,
-                permission,
-            } => {
-                let mut v = Vec::with_capacity(vec_size!(@perm: 3, permission));
-                vec_append!(@perm: &mut v, permission);
-                v.push(bwrap_flag!(@none: "file"));
-                v.push(source.as_raw_fd().to_string().into());
-                v.push(destination.clone());
-                v
-            }
+            /*
+                    Self::Data {
+                        source,
+                        destination,
+                        permission,
+                        read_only,
+                    } => {
+                        let mut v = Vec::with_capacity(vec_size!(@perm: 3, permission));
+                        vec_append!(@perm: &mut v, permission);
+                        v.push(bwrap_flag!(@ro: "data-bind", *read_only));
+                        v.push(source.as_raw_fd().to_string().into());
+                        v.push(destination.clone());
+                        v
+                    }
+                    Self::File {
+                        source,
+                        destination,
+                        permission,
+                    } => {
+                        let mut v = Vec::with_capacity(vec_size!(@perm: 3, permission));
+                        vec_append!(@perm: &mut v, permission);
+                        v.push(bwrap_flag!(@none: "file"));
+                        v.push(source.as_raw_fd().to_string().into());
+                        v.push(destination.clone());
+                        v
+                    }
+            */
             Self::Symlink {
                 source,
                 destination,
