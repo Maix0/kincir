@@ -1,36 +1,39 @@
 #![warn(clippy::pedantic)]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 //! This is a crate that aims to wrap bubblewrap cli tool to be used in rust without forcing the
 //! use of raw CLI api
 
+mod command;
 mod fs_options;
 mod namespace;
 use std::collections::{HashMap, HashSet};
+use std::ffi::{OsStr, OsString};
 
 pub use fs_options::FsOptions;
-pub use namespace::NamespaceFlags;
-pub use namespace::NamespaceOptions;
-
-type CowStr = std::borrow::Cow<'static, str>;
+pub use namespace::NsFlags;
+pub use namespace::NsOptions;
+pub use command::Command;
 
 pub struct BWrapBuilder {
     clear_env: bool,
-    env: HashMap<CowStr, CowStr>,
+    env: HashMap<OsString, OsString>,
     fs_options: Vec<fs_options::FsOptions>,
-    unset_env: HashSet<CowStr>,
-    ns_options: NamespaceOptions,
+    unset_env: HashSet<OsString>,
+    ns_options: NsOptions,
+    command: command::Command,
 }
 
 impl BWrapBuilder {
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(cmd: impl Into<command::Command>) -> Self {
         Self {
             clear_env: false,
             env: HashMap::new(),
             unset_env: HashSet::new(),
             fs_options: Vec::new(),
-            ns_options: NamespaceOptions::new(),
+            ns_options: NsOptions::new(),
+            command: cmd.into(),
         }
     }
 
@@ -46,23 +49,24 @@ impl BWrapBuilder {
         self
     }
     #[must_use]
-    pub fn add_env(mut self, key: impl Into<CowStr>, value: impl Into<CowStr>) -> Self {
-        self.env.insert(key.into(), value.into());
+    pub fn add_env(mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> Self {
+        self.env
+            .insert(key.as_ref().to_os_string(), value.as_ref().to_os_string());
         self
     }
     #[must_use]
-    pub fn add_unset_env(mut self, key: impl Into<CowStr>) -> Self {
-        self.unset_env.insert(key.into());
+    pub fn add_unset_env(mut self, key: impl AsRef<OsStr>) -> Self {
+        self.unset_env.insert(key.as_ref().to_os_string());
         self
     }
     #[must_use]
-    pub fn remove_env(mut self, key: impl Into<CowStr>) -> Self {
-        self.env.remove(&key.into());
+    pub fn remove_env(mut self, key: impl AsRef<OsStr>) -> Self {
+        self.env.remove(&key.as_ref().to_os_string());
         self
     }
     #[must_use]
-    pub fn remove_unset_env(mut self, key: impl Into<CowStr>) -> Self {
-        self.unset_env.remove(&key.into());
+    pub fn remove_unset_env(mut self, key: impl AsRef<OsStr>) -> Self {
+        self.unset_env.remove(key.as_ref());
         self
     }
     #[must_use]
@@ -71,7 +75,7 @@ impl BWrapBuilder {
         self
     }
     #[must_use]
-    pub fn set_cwd(mut self, cwd: impl Into<CowStr>) -> Self {
+    pub fn set_cwd(mut self, cwd: impl AsRef<OsStr>) -> Self {
         self.ns_options.set_cwd(cwd);
         self
     }
@@ -83,57 +87,53 @@ impl BWrapBuilder {
 
     #[must_use]
     pub fn new_session(mut self, enable: bool) -> Self {
-        self.ns_options
-            .flags
-            .set(NamespaceFlags::NEW_SESSION, enable);
+        self.ns_options.flags.set(NsFlags::NEW_SESSION, enable);
         self
     }
 
     /// this takes the `flags` and add them to the existing flagss
-    pub fn add_namespace_flags(mut self, flags: NamespaceFlags) -> Self {
+    #[must_use]
+    pub fn add_namespace_flags(mut self, flags: NsFlags) -> Self {
         self.ns_options.flags.insert(flags);
         self
     }
 
     /// this takes the `flags` and directly set the value to that
-    pub fn set_namespace_flags(mut self, flags: NamespaceFlags) -> Self {
+    #[must_use]
+    pub fn set_namespace_flags(mut self, flags: NsFlags) -> Self {
         self.ns_options.flags = flags;
         self
     }
 
     /// this takes the `flags` and remove them from the existing flagss
-    pub fn remove_namespace_flags(mut self, flags: NamespaceFlags) -> Self {
+    #[must_use]
+    pub fn remove_namespace_flags(mut self, flags: NsFlags) -> Self {
         self.ns_options.flags.remove(flags);
         self
     }
 }
 
-impl Default for BWrapBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl BWrapBuilder {
-    pub fn build_args(&mut self) -> Vec<std::borrow::Cow<'static, str>> {
-        let mut v: Vec<CowStr> = Vec::new();
+    pub fn build_args(&mut self) -> Vec<OsString> {
+        let mut v: Vec<OsString> = Vec::new();
         if self.clear_env {
-            v.push("--clearenv".into());
+            v.push(OsStr::new("--clearenv").to_os_string());
         }
         for (key, value) in &self.env {
-            v.push("--setenv".into());
+            v.push(OsStr::new("--setenv").to_os_string());
             v.push(key.clone());
             v.push(value.clone());
         }
         for key in &self.unset_env {
-            v.push("--unsetenv".into());
+            v.push(OsStr::new("--unsetenv").to_os_string());
             v.push(key.clone());
         }
         for opts in &self.fs_options {
             v.extend(opts.to_option());
         }
         v.extend(self.ns_options.clone().to_options());
-
+        v.push(OsStr::new("--").to_os_string());
+        v.push(self.command.program.clone());
         v
     }
 }
@@ -142,19 +142,27 @@ impl BWrapBuilder {
 mod tests {
     #[test]
     fn env1() {
-        let args = crate::BWrapBuilder::new()
+        let args = crate::BWrapBuilder::new("echo")
             .add_env("MY_ENV_VAR", "some value")
             .add_unset_env("PATH")
             .add_env("MY_ENV_VAR", "override")
             .build_args();
         assert_eq!(
             args,
-            vec!["--setenv", "MY_ENV_VAR", "override", "--unsetenv", "PATH"]
+            vec![
+                "--setenv",
+                "MY_ENV_VAR",
+                "override",
+                "--unsetenv",
+                "PATH",
+                "--",
+                "echo"
+            ]
         );
     }
     #[test]
     fn env2() {
-        let args = crate::BWrapBuilder::new()
+        let args = crate::BWrapBuilder::new("echo")
             .add_env("MY_ENV_VAR", "some value")
             .add_unset_env("PATH")
             .add_env("MY_ENV_VAR", "override")
@@ -172,32 +180,34 @@ mod tests {
                 "EDITOR",
                 "nano",
                 "--unsetenv",
-                "MANPAGER"
+                "MANPAGER",
+                "--",
+                "echo"
             ]
         );
     }
     #[test]
     fn cwd1() {
-        let args = crate::BWrapBuilder::new()
+        let args = crate::BWrapBuilder::new("echo")
             .set_cwd("/my/super/path")
             .build_args();
-        assert_eq!(args, vec!["--chdir", "/my/super/path"]);
+        assert_eq!(args, vec!["--chdir", "/my/super/path", "--", "echo"]);
     }
     #[test]
     fn cwd2() {
-        let args = crate::BWrapBuilder::new()
+        let args = crate::BWrapBuilder::new("echo")
             .set_cwd("/my/super/path")
             .set_cwd("/my/better/path")
             .build_args();
-        assert_eq!(args, vec!["--chdir", "/my/better/path"]);
+        assert_eq!(args, vec!["--chdir", "/my/better/path", "--", "echo"]);
     }
     #[test]
     fn cwd3() {
-        let args = crate::BWrapBuilder::new()
+        let args = crate::BWrapBuilder::new("echo")
             .set_cwd("/my/super/path")
             .set_cwd("/my/better/path")
             .unset_cwd()
             .build_args();
-        assert_eq!(args, Vec::<crate::CowStr>::new());
+        assert_eq!(args, vec!["--", "echo"]);
     }
 }

@@ -1,31 +1,30 @@
-use bitflags::{bitflags, Flags};
-
-use crate::CowStr;
+use bitflags::bitflags;
+use std::ffi::{OsString, OsStr};
 
 #[derive(Debug, Clone, Default)]
-pub struct NamespaceOptions {
-    pub flags: NamespaceFlags,
+pub struct NsOptions {
+    pub flags: NsFlags,
     gid: Option<std::ffi::c_int>,
     uid: Option<std::ffi::c_int>,
-    hostname: Option<CowStr>,
-    cwd: Option<CowStr>,
+    hostname: Option<OsString>,
+    cwd: Option<OsString>,
 }
 
-impl NamespaceOptions {
-    pub fn set_cwd(&mut self, cwd: impl Into<CowStr>) {
-        self.cwd = Some(cwd.into());
+impl NsOptions {
+    pub fn set_cwd(&mut self, cwd: impl AsRef<OsStr>) {
+        self.cwd = Some(cwd.as_ref().into());
     }
-    pub fn cwd(&mut self, cwd: Option<impl Into<CowStr>>) {
-        self.cwd = cwd.map(Into::into);
+    pub fn cwd(&mut self, cwd: Option<impl AsRef<OsStr>>) {
+        self.cwd = cwd.as_ref().map(Into::into);
     }
     pub fn unset_cwd(&mut self) {
         self.cwd = None;
     }
-    pub fn set_hostname(&mut self, hostname: impl Into<CowStr>) {
-        self.hostname = Some(hostname.into());
+    pub fn set_hostname(&mut self, hostname: impl AsRef<OsStr>) {
+        self.hostname = Some(hostname.as_ref().into());
     }
-    pub fn hostname(&mut self, hostname: Option<impl Into<CowStr>>) {
-        self.hostname = hostname.map(Into::into);
+    pub fn hostname(&mut self, hostname: Option<impl AsRef<OsStr>>) {
+        self.hostname = hostname.as_ref().map(Into::into);
     }
     pub fn unset_hostname(&mut self) {
         self.hostname = None;
@@ -50,51 +49,52 @@ impl NamespaceOptions {
     }
 }
 
-impl NamespaceOptions {
+impl NsOptions {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     pub fn sanitize_flags(&mut self) {
         if self.gid.is_some() {
-            self.flags.set(NamespaceFlags::USER, true);
+            self.flags.set(NsFlags::USER, true);
         }
         if self.uid.is_some() {
-            self.flags.set(NamespaceFlags::USER, true);
+            self.flags.set(NsFlags::USER, true);
         }
         if self.hostname.is_some() {
-            self.flags.set(NamespaceFlags::UTS, true);
+            self.flags.set(NsFlags::UTS, true);
         }
 
         self.flags = self.flags.sanitize();
     }
 
-    pub fn to_options(mut self) -> impl Iterator<Item = CowStr> {
+    pub fn to_options(mut self) -> impl Iterator<Item = OsString> {
         self.sanitize_flags();
         let mut v = self.flags.to_options().collect::<Vec<_>>();
 
         if let Some(&gid) = self.gid.as_ref() {
-            v.push(CowStr::from("--gid"));
-            v.push(CowStr::from(gid.to_string()));
+            v.push(OsString::from("--gid"));
+            v.push(OsString::from(gid.to_string()));
         }
         if let Some(&uid) = self.uid.as_ref() {
-            v.push(CowStr::from("--uid"));
-            v.push(CowStr::from(uid.to_string()));
+            v.push(OsString::from("--uid"));
+            v.push(OsString::from(uid.to_string()));
         }
         if let Some(hostname) = self.hostname.as_ref() {
-            v.push(CowStr::from("--hostname"));
-            v.push(CowStr::from(hostname.to_string()));
+            v.push(OsString::from("--hostname"));
+            v.push(OsString::from(hostname));
         }
         if let Some(cwd) = self.cwd.as_ref() {
-            v.push(CowStr::from("--chdir"));
-            v.push(CowStr::from(cwd.to_string()));
+            v.push(OsString::from("--chdir"));
+            v.push(OsString::from(cwd));
         }
 
         v.into_iter()
     }
 }
 
-impl NamespaceFlags {
+impl NsFlags {
     /// Sanitize the flags such that some know unwanted combination are filtered out.
     ///
     ///
@@ -128,12 +128,11 @@ impl NamespaceFlags {
     /// This will return a iterator with the bwarp argument that correspond the the given flags.
     ///
     /// Note that the flags are first sanitize using the [`NamespaceFlags::sanitize`] function
-    #[must_use]
-    pub fn to_options(mut self) -> impl Iterator<Item = CowStr> {
+    pub fn to_options(mut self) -> impl Iterator<Item = OsString> {
         self = self.sanitize();
-        let mut v = Vec::<CowStr>::with_capacity(self.bits().count_ones() as usize);
+        let mut v = Vec::<OsString>::with_capacity(self.bits().count_ones() as usize);
         for flag in self.iter() {
-            v.push(CowStr::from(match flag {
+            v.push(OsString::from(match flag {
                 Self::CGROUPS_TRY => "--unshare-cgroup-try",
                 Self::CGROUPS => "--unshare-cgroup",
                 Self::USER_TRY => "--unshare-user-try",
@@ -160,7 +159,7 @@ bitflags! {
     /// The flags that takes no option that mananage what the sandbox shares/doesn't share with the
     /// host
     #[derive(Debug, Clone,Copy, Eq, PartialEq, Hash, Default)]
-    pub struct NamespaceFlags: u32 {
+    pub struct NsFlags: u32 {
         /// --unshare-user
         const USER = 1 << 0;
         /// --unshare-user-try
@@ -199,7 +198,7 @@ bitflags! {
 
 #[cfg(test)]
 mod test {
-    use super::NamespaceFlags as F;
+    use super::NsFlags as F;
 
     #[test]
     fn try_() {

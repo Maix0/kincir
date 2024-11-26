@@ -1,5 +1,4 @@
-use crate::CowStr;
-// use std::os::fd::AsRawFd;
+use std::ffi::OsString;
 
 macro_rules! vec_size {
     ($default_size:literal) => {
@@ -22,38 +21,38 @@ macro_rules! vec_size {
 macro_rules! vec_append {
     (@perm: &mut $vec:ident, $permission:ident) => {
         if let Some(p) = $permission.as_ref() {
-            $vec.push(CowStr::from("--perm"));
-            $vec.push(CowStr::from(format!("{p:o}")));
+            $vec.push(OsString::from("--perm"));
+            $vec.push(OsString::from(format!("{p:o}")));
         }
     };
     (@size: &mut $vec:ident, $permission:ident) => {
         if let Some(s) = $permission.as_ref() {
-            $vec.push(CowStr::from("--size"));
-            $vec.push(CowStr::from(s.to_string()));
+            $vec.push(OsString::from("--size"));
+            $vec.push(OsString::from(s.to_string()));
         }
     };
 }
 
 macro_rules! bwrap_flag {
     (@none: $flag:literal) => {
-        CowStr::from(concat!("--", $flag))
+        OsString::from(concat!("--", $flag))
     };
     (@ro: $flag:literal, $bool:expr) => {
         if $bool {
-            CowStr::from(concat!("--ro-", $flag))
+            OsString::from(concat!("--ro-", $flag))
         } else {
-            CowStr::from(concat!("--", $flag))
+            OsString::from(concat!("--", $flag))
         }
     };
     (@try: $flag:literal, $bool:expr) => {
         if $bool {
-            CowStr::from(concat!("--", $flag, "-try"))
+            OsString::from(concat!("--", $flag, "-try"))
         } else {
-            CowStr::from(concat!("--", $flag, ""))
+            OsString::from(concat!("--", $flag, ""))
         }
     };
     (@rotry: $flag:literal, $bool_ro:expr, $bool_try:expr) => {
-        CowStr::from(match ($bool_ro, $bool_try) {
+        OsString::from(match ($bool_ro, $bool_try) {
             (true, true) => concat!("--ro-", $flag, "-try"),
             (false, true) => concat!("--", $flag, "-try"),
             (true, false) => concat!("--ro", $flag, ""),
@@ -75,9 +74,9 @@ pub enum FsOptions {
         /// permission would allow it
         read_only: bool,
         /// Where does the bind points while looking outside of the sandbox
-        source: CowStr,
+        source: OsString,
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
         /// thie allow the bind to silently ignore if the source path doesn't exists
@@ -88,9 +87,9 @@ pub enum FsOptions {
     /// path (destination). This allows the use of device files through the bind
     DevBind {
         /// Where does the bind points while looking outside of the sandbox
-        source: CowStr,
+        source: OsString,
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
         /// thie allow the bind to silently ignore if the source path doesn't exists
@@ -101,9 +100,9 @@ pub enum FsOptions {
     /// path (destination). This allows the use of procfs through the bind
     ProcBind {
         /// Where does the bind points while looking outside of the sandbox
-        source: CowStr,
+        source: OsString,
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
         /// thie allow the bind to silently ignore if the source path doesn't exists
@@ -112,21 +111,21 @@ pub enum FsOptions {
     /// Create a new devfs at the specifed path
     Dev {
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
     },
     /// Create a new procfs at the specifed path
     Proc {
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
     },
     /// Create a new mqueue at the specifed path
     MQueue {
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
     },
@@ -137,7 +136,7 @@ pub enum FsOptions {
     /// are not None, please use a [`FsOptions::Chmod`] for that
     Dir {
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
     },
@@ -145,7 +144,7 @@ pub enum FsOptions {
     /// if no size are set it will use bwrap's default size
     TempFs {
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
         /// the maximum size of the tempfs
@@ -161,9 +160,9 @@ pub enum FsOptions {
     ///  error where a more recent system would not.
     Symlink {
         /// Where does the bind points while looking outside of the sandbox
-        source: CowStr,
+        source: OsString,
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
     },
     /*
     File {
@@ -171,7 +170,7 @@ pub enum FsOptions {
         /// `bwrap(1)` to see more information about it
         source: std::os::fd::OwnedFd,
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
     },
@@ -180,7 +179,7 @@ pub enum FsOptions {
         /// `bwrap(1)` to see more information about it
         source: std::os::fd::OwnedFd,
         /// Where does the bind lives while inside of the sandbox
-        destination: CowStr,
+        destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
         /// This would mean `--ro-data` if set
@@ -192,7 +191,7 @@ pub enum FsOptions {
     /// Change the permission of an existing file inside the sandbox
     Chmod {
         /// Which file/directory/path to change the permission
-        destination: CowStr,
+        destination: OsString,
         /// Change the permission of the directory or file that already exists, but only while
         /// looking from inside the sandbox
         permission: u64,
@@ -202,14 +201,14 @@ pub enum FsOptions {
 impl FsOptions {
     #[expect(clippy::too_many_lines)]
     #[must_use]
-    pub fn to_option(&self) -> impl IntoIterator<Item = CowStr> {
+    pub fn to_option(&self) -> impl IntoIterator<Item = OsString> {
         match self {
             Self::Chmod {
                 destination,
                 permission,
             } => vec![
-                CowStr::from("--chmod"),
-                CowStr::from(format!("{permission:o}")),
+                OsString::from("--chmod"),
+                OsString::from(format!("{permission:o}")),
                 destination.clone(),
             ],
             /*
