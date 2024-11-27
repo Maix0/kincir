@@ -3,6 +3,11 @@ name = "kincir_bwrap"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["tokio"]
+tokio = ["dep:tokio"]
+
 [dependencies]
 bitflags = "2.6.0"
 libc = "0.2.164"
+tokio = { version = "1.41.1", features = ["process"], optional = true }

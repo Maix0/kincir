@@ -145,6 +145,12 @@ impl BWrapBuilder {
         v.extend(self.command.args.clone());
         v
     }
+
+    pub fn command(&mut self) -> std::process::Command {
+        let mut cmd = std::process::Command::new("bwrap");
+        cmd.args(self.build_args());
+        cmd
+    }
 }
 
 #[cfg(test)]
