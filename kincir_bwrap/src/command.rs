@@ -14,6 +14,7 @@ use std::{os::unix::ffi::OsStrExt, process::Stdio};
 ///
 /// Command::new("sh").arg("-c").arg("echo hello");
 /// ```
+#[derive(Debug)]
 pub struct Command {
     pub(crate) program: OsString,
     pub(crate) args: Vec<OsString>,
@@ -207,6 +208,7 @@ impl Command {
     /// let cmd = Command::new("echo");
     /// assert_eq!(cmd.get_program(), "echo");
     /// ```
+    #[must_use]
     pub fn get_program(&self) -> &OsStr {
         OsStr::from_bytes(self.program.as_bytes())
     }

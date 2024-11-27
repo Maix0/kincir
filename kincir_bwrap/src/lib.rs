@@ -10,11 +10,12 @@ mod namespace;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 
+pub use command::Command;
 pub use fs_options::FsOptions;
 pub use namespace::NsFlags;
 pub use namespace::NsOptions;
-pub use command::Command;
 
+#[derive(Debug)]
 pub struct BWrapBuilder {
     clear_env: bool,
     env: HashMap<OsString, OsString>,
@@ -38,7 +39,7 @@ impl BWrapBuilder {
     }
 
     #[must_use]
-    pub fn clear_env(mut self, clear_env: bool) -> Self {
+    pub fn clear_env(&mut self, clear_env: bool) -> &mut Self {
         if clear_env {
             self.clear_env = true;
             self.env.clear();
@@ -49,71 +50,78 @@ impl BWrapBuilder {
         self
     }
     #[must_use]
-    pub fn add_env(mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> Self {
+    pub fn add_env(&mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> &mut Self {
         self.env
             .insert(key.as_ref().to_os_string(), value.as_ref().to_os_string());
         self
     }
     #[must_use]
-    pub fn add_unset_env(mut self, key: impl AsRef<OsStr>) -> Self {
+    pub fn add_unset_env(&mut self, key: impl AsRef<OsStr>) -> &mut Self {
         self.unset_env.insert(key.as_ref().to_os_string());
         self
     }
     #[must_use]
-    pub fn remove_env(mut self, key: impl AsRef<OsStr>) -> Self {
+    pub fn remove_env(&mut self, key: impl AsRef<OsStr>) -> &mut Self {
         self.env.remove(&key.as_ref().to_os_string());
         self
     }
     #[must_use]
-    pub fn remove_unset_env(mut self, key: impl AsRef<OsStr>) -> Self {
+    pub fn remove_unset_env(&mut self, key: impl AsRef<OsStr>) -> &mut Self {
         self.unset_env.remove(key.as_ref());
         self
     }
     #[must_use]
-    pub fn add_fs_options(mut self, option: fs_options::FsOptions) -> Self {
+    pub fn add_fs_options(&mut self, option: fs_options::FsOptions) -> &mut Self {
         self.fs_options.push(option);
         self
     }
     #[must_use]
-    pub fn set_cwd(mut self, cwd: impl AsRef<OsStr>) -> Self {
+    pub fn set_cwd(&mut self, cwd: impl AsRef<std::path::Path>) -> &mut Self {
         self.ns_options.set_cwd(cwd);
         self
     }
     #[must_use]
-    pub fn unset_cwd(mut self) -> Self {
+    pub fn unset_cwd(&mut self) -> &mut Self {
         self.ns_options.unset_cwd();
         self
     }
 
     #[must_use]
-    pub fn new_session(mut self, enable: bool) -> Self {
+    pub fn new_session(&mut self, enable: bool) -> &mut Self {
         self.ns_options.flags.set(NsFlags::NEW_SESSION, enable);
         self
     }
 
     /// this takes the `flags` and add them to the existing flagss
     #[must_use]
-    pub fn add_namespace_flags(mut self, flags: NsFlags) -> Self {
+    pub fn add_namespace_flags(&mut self, flags: NsFlags) -> &mut Self {
         self.ns_options.flags.insert(flags);
         self
     }
 
     /// this takes the `flags` and directly set the value to that
     #[must_use]
-    pub fn set_namespace_flags(mut self, flags: NsFlags) -> Self {
+    pub fn set_namespace_flags(&mut self, flags: NsFlags) -> &mut Self {
         self.ns_options.flags = flags;
         self
     }
 
     /// this takes the `flags` and remove them from the existing flagss
     #[must_use]
-    pub fn remove_namespace_flags(mut self, flags: NsFlags) -> Self {
+    pub fn remove_namespace_flags(&mut self, flags: NsFlags) -> &mut Self {
         self.ns_options.flags.remove(flags);
+        self
+    }
+
+    #[must_use]
+    pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
+        self.command.args.push(arg.as_ref().to_os_string());
         self
     }
 }
 
 impl BWrapBuilder {
+    #[must_use]
     pub fn build_args(&mut self) -> Vec<OsString> {
         let mut v: Vec<OsString> = Vec::new();
         if self.clear_env {
@@ -131,9 +139,10 @@ impl BWrapBuilder {
         for opts in &self.fs_options {
             v.extend(opts.to_option());
         }
-        v.extend(self.ns_options.clone().to_options());
+        v.extend(self.ns_options.to_options());
         v.push(OsStr::new("--").to_os_string());
         v.push(self.command.program.clone());
+        v.extend(self.command.args.clone());
         v
     }
 }

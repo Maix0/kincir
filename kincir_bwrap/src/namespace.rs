@@ -1,5 +1,8 @@
 use bitflags::bitflags;
-use std::ffi::{OsString, OsStr};
+use std::{
+    ffi::{OsStr, OsString},
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct NsOptions {
@@ -7,43 +10,56 @@ pub struct NsOptions {
     gid: Option<std::ffi::c_int>,
     uid: Option<std::ffi::c_int>,
     hostname: Option<OsString>,
-    cwd: Option<OsString>,
+    cwd: Option<PathBuf>,
 }
 
 impl NsOptions {
-    pub fn set_cwd(&mut self, cwd: impl AsRef<OsStr>) {
-        self.cwd = Some(cwd.as_ref().into());
+    pub fn set_cwd(&mut self, cwd: impl AsRef<Path>) {
+        self.cwd = Some(cwd.as_ref().to_path_buf());
     }
-    pub fn cwd(&mut self, cwd: Option<impl AsRef<OsStr>>) {
-        self.cwd = cwd.as_ref().map(Into::into);
+
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn cwd(&mut self, cwd: Option<impl AsRef<Path>>) {
+        self.cwd = cwd.map(|cwd| cwd.as_ref().to_path_buf());
     }
+
     pub fn unset_cwd(&mut self) {
         self.cwd = None;
     }
+
     pub fn set_hostname(&mut self, hostname: impl AsRef<OsStr>) {
         self.hostname = Some(hostname.as_ref().into());
     }
+
+    #[allow(clippy::needless_pass_by_value)]
     pub fn hostname(&mut self, hostname: Option<impl AsRef<OsStr>>) {
         self.hostname = hostname.as_ref().map(Into::into);
     }
+
     pub fn unset_hostname(&mut self) {
         self.hostname = None;
     }
+
     pub fn set_uid(&mut self, uid: impl Into<std::ffi::c_int>) {
         self.uid = Some(uid.into());
     }
+
     pub fn uid(&mut self, uid: Option<impl Into<std::ffi::c_int>>) {
         self.uid = uid.map(Into::into);
     }
+
     pub fn unset_uid(&mut self) {
         self.uid = None;
     }
+
     pub fn set_gid(&mut self, uid: impl Into<std::ffi::c_int>) {
         self.gid = Some(uid.into());
     }
+
     pub fn gid(&mut self, gid: Option<impl Into<std::ffi::c_int>>) {
         self.gid = gid.map(Into::into);
     }
+
     pub fn unset_gid(&mut self) {
         self.gid = None;
     }
@@ -69,7 +85,7 @@ impl NsOptions {
         self.flags = self.flags.sanitize();
     }
 
-    pub fn to_options(mut self) -> impl Iterator<Item = OsString> {
+    pub fn to_options(&mut self) -> impl Iterator<Item = OsString> {
         self.sanitize_flags();
         let mut v = self.flags.to_options().collect::<Vec<_>>();
 
