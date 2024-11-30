@@ -33,8 +33,16 @@ struct Runner {
 
 #[derive(Debug)]
 struct RunOutput {
+    /// The trace as a string
     trace: String,
+
+    /// Status string.
+    ///
+    /// If the exit code wasn't documented this will be `Exit code: {code}` or
+    /// `Signal: {name}`
     status: String,
+
+    /// Wether the run was a success or not (aka exit code 0);
     successful: bool,
 }
 
