@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -7,16 +7,36 @@ use std::{
 use itertools::Itertools;
 use tokio::time::Instant;
 
+/// An instance of a runner.
+/// This will allow the spawing of [`Run`]s
 #[derive(Debug)]
 struct Runner {
+    /// The id of the runner, not equal on different instanciation of the program
     id: uuid::Uuid,
+    /// the manifest as parsed from the manifest.yml
     manifest: RunnerManifest,
+    /// the resolved binary dependencies
+    ///
+    /// they are formated like this: <bin_name> -> <host_location>
+    ///
+    /// they'll be present in /bin/<bin_name> when looking from inside the sandbox
     bin_deps: HashMap<String, PathBuf>,
+    /// the resolved files dependencies
+    ///
+    /// note that they are fomated like this:
+    ///
+    /// <host_path> -> <guest_path>
+    ///
+    /// but the guest_path doesn't have the random directory prefixed here
     file_deps: HashMap<PathBuf, PathBuf>,
 }
 
 #[derive(Debug)]
-struct RunOutput {}
+struct RunOutput {
+    trace: String,
+    status: String,
+    successful: bool,
+}
 
 /// The State of the [`Run`]
 #[derive(Debug)]
@@ -53,11 +73,12 @@ struct Run {
 
 /// Describe an [`Runner`], which will then be able to execute [`Run`]s.
 ///
-/// These should be written in `./runners/<name>.yml`.
+/// These should be written in `./runners/<name>/manifest.yml`.
 ///
 /// Every runner will be loaded at startup, checked for missing depency.
 ///
 /// If any error are found the service will fail before accepting any request
+#[serde_with::serde_as]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct RunnerManifest {
     /// Wheither the user will be given a trace to be shown or not.
@@ -69,10 +90,29 @@ pub struct RunnerManifest {
     pub name: String,
 
     /// List of program that should be avaiable in the $PATH of the sandbox
+    /// This is optional, and if not set, then only coreutils and bash will be added to the `PATH`
+    #[serde(default)]
     pub bin_deps: Vec<String>,
 
     /// List of path that will be included into the sandbox. these will be prefixed with a random
-    /// hash and the root of folder will be given in the $FILES_ROOT env var
+    /// hash and the root of folder will be given in the `FILES_ROOT` env var
+    ///
+    /// On the host side, the files will be located next to the manifest.yml, meaning that if they
+    /// are absolute paths or relative path they will start at the directory containing the
+    /// manifest.yml.
+    ///
+    /// It is an error to have path that contains the `..` directory inside them as it could lead
+    /// to security issues.
+    ///
+    /// # Note
+    ///
+    /// This is optional, and if you truly don't need files to be passed into the sandbox, then it
+    /// can be left out/not written in the manifest.
+    ///
+    /// All the files that will be passed as read only since other [`Run`]s may be launched
+    /// afterwards, and there could be issues if the files are to be modified
+    ///
+    #[serde(default)]
     pub files_deps: HashMap<PathBuf, PathBuf>,
 
     /// The program that will be launched inside the sandbox (right after a simple wrapper that
@@ -95,6 +135,7 @@ pub struct RunnerManifest {
     /// The time after which the sandbox (and every processes inside) will be killed.
     /// This defaults to 10s if not present
     #[serde(default = "RunnerManifest::default_timeout_value")]
+    #[serde_as(as = "serde_with::DurationSeconds<u64, serde_with::formats::Flexible>")]
     pub timeout: Duration,
 
     /// Do not include default binaries into the $PATH
@@ -104,6 +145,26 @@ pub struct RunnerManifest {
     /// the list of default binary are listed at [`RunnerManifest::DEFAULT_COMMANDS`]
     #[serde(default)]
     pub no_default_binary: bool,
+
+    /// List of exit status and their meaning
+    ///
+    /// This key *is* optional and will default to no known exit code except for 0 which is a
+    /// successful run.
+    ///
+    /// Do note that 0 will *ALWAYS* be a successful run.
+    ///
+    /// For example this could be something like:
+    ///  - 0: Successful (by default, and implied. It is an error to have a manifest with a message for exitcode 0)
+    ///
+    ///  - 1: missing files
+    ///
+    ///  - 2: Code formatting error
+    ///
+    ///  - 3: Doesn't compile
+    ///
+    ///  - 4: Using illegal functions
+    #[serde(default)]
+    pub exit_status: HashMap<i32, String>,
 }
 
 impl RunnerManifest {
@@ -256,25 +317,32 @@ impl RunnerManifest {
             .map(|p| p.as_path())
             .collect::<Vec<_>>();
         if !duplicates.is_empty() {
-            return Err(RunnerFilesDepError::Duplicate(duplicates));
+            return Err(RunnerFilesDepError::Duplicates(duplicates));
         }
         for (host_path, guest_path) in &self.files_deps {
-            if !host_path.exists() {
+            let mut host_real_path = std::ffi::OsString::from(format!("./runners/{}/", self.name));
+            host_real_path.push(host_path);
+            let host_real_path = PathBuf::from(host_real_path);
+            if !host_real_path.exists() {
                 return Err(RunnerFilesDepError::Missing(host_path.as_path()));
             }
-            if host_path
-                .components()
-                .any(|s| matches!(s, std::path::Component::ParentDir))
-            {
+            if host_path.components().any(|s| {
+                matches!(
+                    s,
+                    std::path::Component::ParentDir | std::path::Component::Prefix(_)
+                )
+            }) {
                 return Err(RunnerFilesDepError::InvalidPath(host_path.as_path()));
             }
-            if guest_path
-                .components()
-                .any(|s| matches!(s, std::path::Component::ParentDir))
-            {
+            if guest_path.components().any(|s| {
+                matches!(
+                    s,
+                    std::path::Component::ParentDir | std::path::Component::Prefix(_)
+                )
+            }) {
                 return Err(RunnerFilesDepError::InvalidPath(guest_path.as_path()));
             }
-            out.insert(host_path.clone(), guest_path.clone());
+            out.insert(host_real_path, guest_path.clone());
         }
         Ok(out)
     }
@@ -288,7 +356,7 @@ pub enum RunnerBinaryDepError<'a> {
 
 #[derive(Debug)]
 pub enum RunnerFilesDepError<'a> {
-    Duplicate(Vec<&'a Path>),
+    Duplicates(Vec<&'a Path>),
     Missing(&'a Path),
     InvalidPath(&'a Path),
 }
@@ -303,3 +371,19 @@ impl<'a> std::fmt::Display for RunnerBinaryDepError<'a> {
 }
 
 impl<'a> std::error::Error for RunnerBinaryDepError<'a> {}
+
+impl<'a> std::fmt::Display for RunnerFilesDepError<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Duplicates(paths) => {
+                writeln!(f, "duplicate guest paths")?;
+                for p in paths {
+                    writeln!(f, "- {}", p.display())?;
+                }
+                Ok(())
+            }
+            RunnerFilesDepError::Missing(p) => writeln!(f, "missing path: {}", p.display()),
+            RunnerFilesDepError::InvalidPath(p) => writeln!(f, "invalid path {}", p.display()),
+        }
+    }
+}

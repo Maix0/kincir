@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::{ffi::OsString, os::fd::AsRawFd};
 
 macro_rules! vec_size {
     ($default_size:literal) => {
@@ -63,7 +63,7 @@ macro_rules! bwrap_flag {
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum FsOptions {
+pub enum FsOptions<'fd> {
     /// the equivalent of `--bind` (with the `read_only` or try modifier if set)
     /// This means that the file/directory will be visible from inside the sandbox at the given
     /// path (destination). it will be backed up by the directory/file at `source` on the host
@@ -164,30 +164,28 @@ pub enum FsOptions {
         /// Where does the bind lives while inside of the sandbox
         destination: OsString,
     },
-    /*
     File {
         /// The filedescriptor that will be used in the `--file` flag. Please check the manpage of
         /// `bwrap(1)` to see more information about it
-        source: std::os::fd::OwnedFd,
+        source: std::os::fd::BorrowedFd<'fd>,
         /// Where does the bind lives while inside of the sandbox
         destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
     },
     Data {
-        /// The filedescriptor that will be used in the `--data` flag. Please check the manpage of
+        /// The filedescriptor that will be used in the `--bind-data` flag. Please check the manpage of
         /// `bwrap(1)` to see more information about it
-        source: std::os::fd::OwnedFd,
+        source: std::os::fd::BorrowedFd<'fd>,
         /// Where does the bind lives while inside of the sandbox
         destination: OsString,
         /// if set to Some value, what will be the permission of the bind inside the sandbox
         permission: Option<u64>,
-        /// This would mean `--ro-data` if set
+        /// This would mean `--ro-bind-data` if set
         /// This makes sure that the sandbox can't write the the files under the bind, even if the
         /// permission would allow it
         read_only: bool,
     },
-    */
     /// Change the permission of an existing file inside the sandbox
     Chmod {
         /// Which file/directory/path to change the permission
@@ -198,7 +196,7 @@ pub enum FsOptions {
     },
 }
 
-impl FsOptions {
+impl<'fd> FsOptions<'fd> {
     #[expect(clippy::too_many_lines)]
     #[must_use]
     pub fn to_option(&self) -> impl IntoIterator<Item = OsString> {
@@ -211,33 +209,31 @@ impl FsOptions {
                 OsString::from(format!("{permission:o}")),
                 destination.clone(),
             ],
-            /*
-                    Self::Data {
-                        source,
-                        destination,
-                        permission,
-                        read_only,
-                    } => {
-                        let mut v = Vec::with_capacity(vec_size!(@perm: 3, permission));
-                        vec_append!(@perm: &mut v, permission);
-                        v.push(bwrap_flag!(@ro: "data-bind", *read_only));
-                        v.push(source.as_raw_fd().to_string().into());
-                        v.push(destination.clone());
-                        v
-                    }
-                    Self::File {
-                        source,
-                        destination,
-                        permission,
-                    } => {
-                        let mut v = Vec::with_capacity(vec_size!(@perm: 3, permission));
-                        vec_append!(@perm: &mut v, permission);
-                        v.push(bwrap_flag!(@none: "file"));
-                        v.push(source.as_raw_fd().to_string().into());
-                        v.push(destination.clone());
-                        v
-                    }
-            */
+            Self::Data {
+                source,
+                destination,
+                permission,
+                read_only,
+            } => {
+                let mut v = Vec::with_capacity(vec_size!(@perm: 3, permission));
+                vec_append!(@perm: &mut v, permission);
+                v.push(bwrap_flag!(@ro: "bind-data", *read_only));
+                v.push(source.as_raw_fd().to_string().into());
+                v.push(destination.clone());
+                v
+            }
+            Self::File {
+                source,
+                destination,
+                permission,
+            } => {
+                let mut v = Vec::with_capacity(vec_size!(@perm: 3, permission));
+                vec_append!(@perm: &mut v, permission);
+                v.push(bwrap_flag!(@none: "file"));
+                v.push(source.as_raw_fd().to_string().into());
+                v.push(destination.clone());
+                v
+            }
             Self::Symlink {
                 source,
                 destination,

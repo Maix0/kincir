@@ -117,7 +117,7 @@ impl NsFlags {
     /// Currently this includes:
     /// - the `_TRY` variants are removed if the non `_TRY` variants are present
     ///
-    /// - all the `--unshare-*` bwrap flags are removed if the [`NamespaceFlags::ALL`] is present
+    /// - all the `--unshare-*` bwrap flags are removed if the [`NsFlags::ALL`] is present
     #[must_use]
     pub fn sanitize(mut self) -> Self {
         if self.contains(Self::ALL) {
@@ -143,7 +143,7 @@ impl NsFlags {
 
     /// This will return a iterator with the bwarp argument that correspond the the given flags.
     ///
-    /// Note that the flags are first sanitize using the [`NamespaceFlags::sanitize`] function
+    /// Note that the flags are first sanitize using the [`NsFlags::sanitize`] function
     pub fn to_options(mut self) -> impl Iterator<Item = OsString> {
         self = self.sanitize();
         let mut v = Vec::<OsString>::with_capacity(self.bits().count_ones() as usize);

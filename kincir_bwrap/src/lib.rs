@@ -9,6 +9,7 @@ mod fs_options;
 mod namespace;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
+use std::os::fd::AsFd;
 use std::path::Path;
 
 pub use command::Command;
@@ -17,17 +18,17 @@ pub use namespace::NsFlags;
 pub use namespace::NsOptions;
 
 #[derive(Debug)]
-pub struct BwrapCommand {
+pub struct BwrapCommand<'fd> {
     bwrap: Option<OsString>,
     clear_env: bool,
     env: HashMap<OsString, OsString>,
-    fs_options: Vec<fs_options::FsOptions>,
+    fs_options: Vec<fs_options::FsOptions<'fd>>,
     unset_env: HashSet<OsString>,
     ns_options: NsOptions,
     command: command::Command,
 }
 
-impl BwrapCommand {
+impl<'fd> BwrapCommand<'fd> {
     pub fn bwrap(&mut self, bwrap: Option<impl AsRef<OsStr>>) -> &mut Self {
         self.bwrap = bwrap.map(|i| i.as_ref().to_os_string());
         self
@@ -85,7 +86,7 @@ impl BwrapCommand {
         self
     }
 
-    pub fn add_fs_options(&mut self, option: fs_options::FsOptions) -> &mut Self {
+    pub fn add_fs_options(&mut self, option: fs_options::FsOptions<'fd>) -> &mut Self {
         self.fs_options.push(option);
         self
     }
@@ -230,9 +231,25 @@ impl BwrapCommand {
             source: source.as_ref().as_os_str().to_os_string(),
         })
     }
+
+    pub fn file(&mut self, file: &'fd impl AsFd, destination: impl AsRef<Path>) -> &mut Self {
+        self.add_fs_options(FsOptions::File {
+            destination: destination.as_ref().as_os_str().to_os_string(),
+            source: file.as_fd(),
+            permission: None,
+        })
+    }
+
+    pub fn data(&mut self, file: &'fd impl AsFd, destination: impl AsRef<Path>) -> &mut Self {
+        self.add_fs_options(FsOptions::File {
+            destination: destination.as_ref().as_os_str().to_os_string(),
+            source: file.as_fd(),
+            permission: None,
+        })
+    }
 }
 
-impl BwrapCommand {
+impl<'fd> BwrapCommand<'fd> {
     /// create an [`Vec<OsString>`] that will be the exact argument given to the bwrap binary
     #[must_use]
     pub fn build_args(&mut self) -> Vec<OsString> {

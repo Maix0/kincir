@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-mod runner;
+pub mod runner;
 
 #[tokio::main]
 async fn main() {
