@@ -1,11 +1,13 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     time::Duration,
 };
 
 use itertools::Itertools;
 use tokio::time::Instant;
+
+mod distro_specific;
 
 /// An instance of a runner.
 /// This will allow the spawing of [`Run`]s
@@ -29,11 +31,23 @@ struct Runner {
     ///
     /// but the guest_path doesn't have the random directory prefixed here
     file_deps: HashMap<PathBuf, PathBuf>,
+
+    /// pathes which needs to be mapped into the namespace due to required dependencies
+    ///
+    /// For example on most system the binaries requires the presence of the /lib and /usr/lib
+    /// directory since they hold files such as the dynamic linker (usually refered by its name: `ld-linux.so.2`) and any shared library that my be used.
+    ///
+    /// some distribution works in weird ways, where the usual "map /lib to /lib and /usr/lib to
+    /// /usr/lib" won't work. For example Nixos binaries' requires access to the nix store located
+    /// at the /nix/store/ path
+    ///
+    /// These dependencies will be created by distro specific function (and in case of an unknown
+    /// distro it'll be a sensible default) that will specify which path to map
+    absolute_file_deps: HashSet<PathBuf>,
 }
 
 #[derive(Debug)]
 struct RunOutput {
-    /// The trace as a string
     trace: String,
 
     /// Status string.
